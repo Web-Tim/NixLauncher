@@ -1,11 +1,13 @@
 package eu.nix.nixlauncher;
 
+import eu.nix.nixlauncher.util.DownloadThread;
 import eu.nix.nixlauncher.util.WebUtil;
 import fr.litarvan.openauth.microsoft.MicrosoftAuthResult;
-import javafx.animation.*;
-import javafx.application.Platform;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
+import javafx.animation.FadeTransition;
+import javafx.animation.RotateTransition;
+import javafx.animation.TranslateTransition;
+import javafx.concurrent.Service;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.image.ImageView;
@@ -14,17 +16,10 @@ import javafx.scene.text.Text;
 import javafx.util.Duration;
 
 import javax.imageio.ImageIO;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
-import javax.print.attribute.standard.MediaSize;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -32,8 +27,8 @@ import java.util.zip.ZipInputStream;
 public class MainController {
     private static final MicrosoftAuthResult USER_INFO = LoginController.getResult();
     private static final MainController instance = new MainController();
-    private static final File OUTPUT_DIR = new File("./bin"),
-            NIX_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/NixClient.jar"),
+    private static File OUTPUT_DIR = new File("./bin");
+    private static File NIX_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/NixClient.jar"),
             NATIVES_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/natives.zip"),
             NATIVES_DIR = new File(OUTPUT_DIR.getAbsolutePath() + "/natives"),
             ASSETS_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/assets.zip"),
@@ -41,6 +36,7 @@ public class MainController {
     private static final String VERSION_URL = "https://raw.githubusercontent.com/Web-Tim/NixConfigs/main/versions.txt",
             NATIVES_URL = "https://download1582.mediafire.com/wyi2dw86b4jg/i4fivr7nyprg46c/natives.zip",
             ASSETS_URL = "https://download1532.mediafire.com/ic6r4292i13g/hip6jeftjxbwqa3/assets.zip";
+    private float latestVersion;
 
     @FXML
     private AnchorPane mainPane;
@@ -69,6 +65,9 @@ public class MainController {
     }
 
     public void launchPicClicked() {
+        this.progressLabel.setText("");
+        this.progressLabel.setDisable(true);
+        this.progressBar.setDisable(true);
         RotateTransition rotateTransition = new RotateTransition();
         rotateTransition.setFromAngle(0);
         rotateTransition.setToAngle(-45);
@@ -106,10 +105,114 @@ public class MainController {
         fadeTransition2.setOnFinished(finish -> this.launch());
     }
 
-    private void launch()
-    {
-        if (!OUTPUT_DIR.exists()) OUTPUT_DIR.mkdir();
+    private void launch() {
+        this.progressLabel.setDisable(false);
+        this.progressBar.setDisable(false);
 
+        Service<Void> version = this.bindTask(this.progressBar, new Task<Void>() {
+            @Override
+            protected Void call() {
+                progressLabel.setText("getting version");
+                latestVersion = fetchLatestVersion();
+                return null;
+            }
+        });
+        if (!OUTPUT_DIR.exists()) OUTPUT_DIR.mkdirs();
+        version.setOnSucceeded(workerStateEvent -> downloadNatives());
+        version.start();
+    }
+
+    private void downloadNatives() {
+        Service<Void> natives = this.bindTask(this.progressBar, new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                if (!NATIVES_DIR.exists()) {
+                    progressLabel.setText("downloading natives");
+                    DownloadThread nativesThread = new DownloadThread(NATIVES_FILE, NATIVES_URL);
+                    nativesThread.start();
+                    updateProgress(nativesThread.getBytesDownloaded(), nativesThread.getTotalSize());
+                    nativesThread.join();
+                    unzip(NATIVES_FILE.getAbsoluteFile());
+                }
+                return null;
+            }
+        });
+        natives.setOnSucceeded(workerStateEvent -> downloadAssets());
+        natives.start();
+    }
+
+    private void downloadAssets() {
+        Service<Void> assets = this.bindTask(this.progressBar, new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                if (!ASSETS_DIR.exists()) {
+                    progressLabel.setText("downloading assets");
+                    DownloadThread assetsThread = new DownloadThread(ASSETS_FILE, ASSETS_URL);
+                    assetsThread.start();
+                    updateProgress(assetsThread.getBytesDownloaded(), assetsThread.getTotalSize());
+                    unzip(ASSETS_FILE.getAbsoluteFile());
+                }
+                return null;
+            }
+        });
+        assets.setOnSucceeded(workerStateEvent -> this.downloadJar(this.latestVersion));
+        assets.start();
+    }
+
+    private void downloadJar(float version) {
+        Service<Void> jar = this.bindTask(this.progressBar, new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                if (!NIX_FILE.exists()) {
+                    progressLabel.setText("downloading jar");
+                    DownloadThread downloadThread = new DownloadThread(NIX_FILE, getDownloadURL(version));
+                    downloadThread.start();
+                    updateProgress(downloadThread.getBytesDownloaded(), downloadThread.getTotalSize());
+                    downloadThread.join();
+                }
+                return null;
+            }
+        });
+        jar.setOnSucceeded(workerStateEvent -> this.runClient());
+        jar.start();
+    }
+
+    private void runClient() {
+        Service<Void> run = this.bindTask(this.progressBar, new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                progressLabel.setText("running jar");
+                ProcessBuilder builder = new ProcessBuilder("java", String.format("-Djava.library.path=%s", NATIVES_DIR.getAbsolutePath()), "-jar", "NixClient.jar")
+                        .directory(new File("bin/versions/" + latestVersion).getAbsoluteFile())
+                        .redirectErrorStream(true);
+                Process p = builder.start();
+                System.out.println("Process: " + p.pid() + " started!");
+
+                Application.getPrimaryStage().hide();
+                BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line;
+                while ((line = input.readLine()) != null) {
+                    System.out.println(line);
+                }
+                input.close();
+                return null;
+            }
+        });
+        run.start();
+    }
+
+    private Service<Void> bindTask(ProgressBar progressBar, Task<Void> task) {
+        Service<Void> s = new Service<>() {
+            @Override
+            protected Task<Void> createTask() {
+                return task;
+            }
+        };
+        progressBar.progressProperty().bind(s.progressProperty());
+        return s;
+    }
+
+    private float fetchLatestVersion() {
         HttpResponse<String> versionSite = WebUtil.get(VERSION_URL);
         String[] versions = versionSite.body().split(":");
         ArrayList<Float> versions_f = new ArrayList<>();
@@ -117,47 +220,17 @@ public class MainController {
             float version = Float.parseFloat(s.substring(1).contains("-") ? s.substring(1).split("-")[0] : s.substring(1));
             versions_f.add(version);
         }
+        this.reassign(versions_f.get(0));
+        return versions_f.get(0);
+    }
 
-        try {
-            if (!NATIVES_DIR.exists())
-            {
-                InputStream in = new URL(NATIVES_URL).openStream();
-                Files.copy(in, Paths.get(NATIVES_FILE.getAbsolutePath()));
-                this.unzip(NATIVES_FILE.getAbsoluteFile());
-            }
-
-            if (!ASSETS_DIR.exists())
-            {
-                InputStream in = new URL(ASSETS_URL).openStream();
-                Files.copy(in, Paths.get(ASSETS_FILE.getAbsolutePath()));
-                this.unzip(ASSETS_FILE.getAbsoluteFile());
-            }
-
-            if (!NIX_FILE.exists()) {
-                InputStream in = new URL(this.getDownloadURL(versions_f.get(0))).openStream();
-                Files.copy(in, Paths.get(NIX_FILE.getAbsolutePath()));
-            }
-            this.progressBar.setProgress(0.5);
-            this.progressLabel.setText("launching");
-
-            ProcessBuilder builder = new ProcessBuilder("java", String.format("-Djava.library.path=%s", NATIVES_DIR.getAbsolutePath()), "-jar", "NixClient.jar")
-                    .directory(new File("bin").getAbsoluteFile())
-                    .redirectErrorStream(true);
-            Process p = builder.start();
-            System.out.println("Process: " + p.pid() + " started!");
-            this.progressBar.setProgress(1);
-            this.progressLabel.setText("launched!");
-
-            this.mainPane.setDisable(true);
-            BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String line;
-            while ((line = input.readLine()) != null) {
-                System.out.println(line);
-            }
-            input.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    private void reassign(float version) {
+        OUTPUT_DIR = new File(OUTPUT_DIR + "/versions/" + version);
+        NIX_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/NixClient.jar");
+        NATIVES_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/natives.zip");
+        NATIVES_DIR = new File(OUTPUT_DIR.getAbsolutePath() + "/natives");
+        ASSETS_FILE = new File(OUTPUT_DIR.getAbsolutePath() + "/assets.zip");
+        ASSETS_DIR = new File(OUTPUT_DIR.getAbsolutePath() + "/assets");
     }
 
     public static File newFile(File destinationDir, ZipEntry zipEntry) throws IOException {
@@ -224,9 +297,6 @@ public class MainController {
     }
 
     /**
-     * @param input
-     * @param scaleFactor
-     * @return
      * @see <a href="https://gist.github.com/jewelsea/5415891">ImageScaler.java</a>
      */
     private BufferedImage resample(BufferedImage input, int scaleFactor) {

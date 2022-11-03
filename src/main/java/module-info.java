@@ -2,7 +2,6 @@ module eu.nix.nixlauncher {
     requires javafx.controls;
     requires javafx.fxml;
 
-    requires gson;
     requires openauth;
     requires java.desktop;
     requires java.net.http;

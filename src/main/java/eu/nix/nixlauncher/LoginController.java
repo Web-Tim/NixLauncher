@@ -40,12 +40,7 @@ public class LoginController {
         }
 
         if (this.loginSuccess) {
-            Thread t = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    MainController.getInstance().prepare();
-                }
-            });
+            Thread t = new Thread(() -> MainController.getInstance().prepare());
             t.start();
             try {
                 t.join();
