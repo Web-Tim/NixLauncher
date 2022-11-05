@@ -1,5 +1,6 @@
 package eu.nix.nixlauncher;
 
+import eu.nix.nixlauncher.local.accounts.AccountManager;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
@@ -12,8 +13,13 @@ public class Application extends javafx.application.Application {
 
     @Override
     public void start(Stage stage) throws IOException {
-        System.setProperty("javax.net.ssl.trustStorePassword", "changeit");
-        FXMLLoader fxmlLoader = new FXMLLoader(Application.class.getResource("login.fxml"));
+        FXMLLoader fxmlLoader;
+        if (!AccountManager.getInstance().getAccounts().isEmpty())
+        {
+            fxmlLoader = new FXMLLoader(Application.class.getResource("choose-login.fxml"));
+        }else {
+            fxmlLoader = new FXMLLoader(Application.class.getResource("login.fxml"));
+        }
         Application.loginScene = new Scene(fxmlLoader.load(), 640, 360);
         stage.setResizable(false);
         stage.setTitle("NixLauncher");

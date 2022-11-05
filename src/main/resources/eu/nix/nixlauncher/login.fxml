@@ -8,7 +8,7 @@
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.text.Font?>
 
-<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="320.0" prefWidth="640.0" style="-fx-background-color: rgb(35, 35, 35);" xmlns="http://javafx.com/javafx/11" xmlns:fx="http://javafx.com/fxml/1" fx:controller="eu.nix.nixlauncher.LoginController">
+<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="320.0" prefWidth="640.0" style="-fx-background-color: rgb(35, 35, 35);" xmlns="http://javafx.com/javafx/11" xmlns:fx="http://javafx.com/fxml/1" fx:controller="eu.nix.nixlauncher.controller.LoginController">
    <children>
       <TextField fx:id="emailField" alignment="CENTER" layoutX="246.0" layoutY="106.0" onKeyTyped="#emailTyped" promptText="E-Mail" style="-fx-background-color: rgb(40, 40, 40); -fx-text-fill: rgb(245, 245, 245);" />
       <PasswordField fx:id="passwordField" alignment="CENTER" layoutX="246.0" layoutY="148.0" promptText="Password" style="-fx-background-color: rgb(40, 40, 40); -fx-text-fill: rgb(245, 245, 245);" />

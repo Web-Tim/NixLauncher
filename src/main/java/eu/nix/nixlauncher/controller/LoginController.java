@@ -1,5 +1,7 @@
-package eu.nix.nixlauncher;
+package eu.nix.nixlauncher.controller;
 
+import eu.nix.nixlauncher.Application;
+import eu.nix.nixlauncher.local.accounts.AccountManager;
 import fr.litarvan.openauth.microsoft.MicrosoftAuthResult;
 import fr.litarvan.openauth.microsoft.MicrosoftAuthenticationException;
 import fr.litarvan.openauth.microsoft.MicrosoftAuthenticator;
@@ -40,13 +42,10 @@ public class LoginController {
         }
 
         if (this.loginSuccess) {
-            Thread t = new Thread(() -> MainController.getInstance().prepare());
-            t.start();
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+            AccountManager.Account account = new AccountManager.Account(LoginController.result);
+            AccountManager.getInstance().addAccount(account);
+            AccountManager.getInstance().saveAccounts();
+            MainController.USER = account;
             try {
                 FXMLLoader fxmlLoader = new FXMLLoader(Application.class.getResource("main.fxml"));
                 Scene mainScene = new Scene(fxmlLoader.load(), 640, 360);
@@ -89,5 +88,9 @@ public class LoginController {
 
     public static MicrosoftAuthResult getResult() {
         return result;
+    }
+
+    public static void setResult(MicrosoftAuthResult result) {
+        LoginController.result = result;
     }
 }

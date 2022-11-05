@@ -9,4 +9,7 @@ module eu.nix.nixlauncher {
 
     opens eu.nix.nixlauncher to javafx.fxml;
     exports eu.nix.nixlauncher;
+    exports eu.nix.nixlauncher.controller;
+    exports eu.nix.nixlauncher.local.accounts;
+    opens eu.nix.nixlauncher.controller to javafx.fxml;
 }
